@@ -2,8 +2,15 @@ import streamlit as st
 import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from moviepy.editor import VideoClip, AudioFileClip
-# Или ImageSequenceClip за рендиране кадър по кадър с MoviePy
+
+# Безопасен импорт за MoviePy спрямо версията му
+try:
+    from moviepy.editor import VideoClip
+except ImportError:
+    try:
+        from moviepy import VideoClip
+    except ImportError:
+        VideoClip = None
 
 # Конфигурация на страницата
 st.set_page_config(page_title="ClipWeave - Autonomous UGC SaaS", page_icon="🎬", layout="wide")
@@ -46,8 +53,8 @@ def split_into_subtitles(text: str, max_chars: int = 25) -> list:
         lines.append(current_line)
     return lines
 
-# ФУНКЦИЯ ЗА ГЕНЕРИРАНЕ НА ИСТИНСКИ MP4 КЛИП СЪС СУБТИТРИ (ВИДЕО РЕНДЪР)
-def generate_mp4_video(text: string, output_filename="clipweave_output.mp4"):
+# ФУНКЦИЯ ЗА ГЕНЕРИРАНЕ НА ВИДЕО ИЛИ СУБТИТРИ
+def generate_mp4_video(text: str, output_filename="clipweave_output.mp4"):
     width, height = 720, 1280  # Вертикален формат 9:16 (TikTok/Reels)
     fps = 24
     duration_per_line = 3.0
@@ -56,19 +63,15 @@ def generate_mp4_video(text: string, output_filename="clipweave_output.mp4"):
     total_duration = max(len(subtitles) * duration_per_line, 3.0)
     
     def make_frame(t):
-        # Създаване на динамичен фон (градиент или цвят)
-        img = Image.new("RGB", (width, height), color=(15, 23, 42)) # Тъмно син/сив стил
+        img = Image.new("RGB", (width, height), color=(15, 23, 42))
         draw = ImageDraw.Draw(img)
         
-        # Намиране на активния ред субтитри за съответната секунда t
         line_index = int(t // duration_per_line)
         if line_index >= len(subtitles):
             line_index = len(subtitles) - 1
         current_text = subtitles[line_index] if subtitles else text
         
-        # Опит за зареждане на шрифт, с fallback към стандартен
         try:
-            # Опит за стандартен дебел шрифт в Linux/Streamlit Cloud
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 46)
         except:
             try:
@@ -76,11 +79,8 @@ def generate_mp4_video(text: string, output_filename="clipweave_output.mp4"):
             except:
                 font = None
 
-        # Отрисуване на декоративен горен елемент (брендинг)
         draw.rectangle([50, 100, width - 50, 140], fill=(255, 75, 75))
         
-        # Центриране и изписване на текста на субтитрите
-        # Използваме multi-line или стандартен draw.text
         bbox = draw.textbbox((0, 0), current_text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
@@ -88,24 +88,22 @@ def generate_mp4_video(text: string, output_filename="clipweave_output.mp4"):
         x = (width - text_width) // 2
         y = (height - text_height) // 2
         
-        # Фон зад текста за четливост
         padding = 20
         draw.rectangle([x - padding, y - padding, x + text_width + padding, y + text_height + padding], fill=(0, 0, 0))
         draw.text((x, y), current_text, fill=(255, 255, 255), font=font)
         
-        # Добавяне на водяен знак долу
         watermark = "ClipWeave AI Studio"
         draw.text((50, height - 100), watermark, fill=(148, 163, 184), font=font)
         
         return np.array(img)
 
-    # Създаване на MoviePy клип
-    animation = VideoClip(make_frame, duration=total_duration)
-    animation.fps = fps
-    
-    # Запис във временен файл
-    animation.write_videofile(output_filename, codec="libx264", audio=False, logger=None)
-    return output_filename
+    if VideoClip is not None:
+        animation = VideoClip(make_frame, duration=total_duration)
+        animation.fps = fps
+        animation.write_videofile(output_filename, codec="libx264", audio=False, logger=None)
+        return output_filename
+    else:
+        raise ImportError("MoviePy не е инсталиран правилно на сървъра.")
 
 # Странично меню (Sidebar)
 st.sidebar.title("🔐 Клиентски и Админ Панел")
@@ -145,17 +143,17 @@ if menu == "🤖 Streamlit AI Агент и Автоматизация":
             st.markdown(f"3. **Генерирана топ кука (Hook):** *„Спрете да превъртате! Ето как {agent_topic} променя изцяло грижата за вас.“*")
 
 # -------------------------------------------------------------
-# МОДУЛ 2: AI ГЕНЕРАТОР НА СУБТИТРИ И КЛИПОВЕ (С ИСТИНСКИ MP4 РЕНДЪР)
+# МОДУЛ 2: AI ГЕНЕРАТОР НА СУБТИТРИ И КЛИПОВЕ
 # -------------------------------------------------------------
 elif menu == "🚀 AI Генератор на субтитри и клипове":
     st.title("🎬 ClipWeave Видео и Субтитри Генератор")
-    st.markdown("### Създайте истинско вертикално видео (.mp4) с фон и синхронизирани субтитри на български език.")
+    st.markdown("### Създайте вертикално видео (9:16) с фон и синхронизирани субтитри на български език.")
 
     platform = st.selectbox("Платформа:", ["TikTok", "Instagram Reels", "YouTube Shorts"])
     raw_input_text = st.text_area("Въведете вашия текст или сценарий за субтитрите:", 
                                   "Спрете да превъртате! Това е най-лесният начин да развиете проекта си бързо и без излишни разходи.")
 
-    if st.button("🚀 Рендирай и генерирай истински MP4 клип"):
+    if st.button("🚀 Рендирай и генерирай MP4 клип"):
         if not is_my_admin and st.session_state.free_uses >= max_free:
             st.error("⚠️ Изчерпихте вашите 3 безплатни опита! За неограничен достъп преминете към платен план през EasyPay.")
         elif not raw_input_text:
@@ -166,22 +164,23 @@ elif menu == "🚀 AI Генератор на субтитри и клипове
             
             cleaned_text = clean_bulgarian_text(raw_input_text)
             
-            with st.spinner("⏳ Рендиране на видеоклипа (9:16) в ход... Моля, изчакайте няколко секунди."):
-                video_filename = generate_mp4_video(cleaned_text, output_filename=f"clipweave_{platform.lower()}.mp4")
-            
-            st.success("🎉 Видеоклипът е успешно рендиран и готов за изтегляне!")
-            
-            # Представяне на видео плеър в Streamlit за преглед
-            st.video(video_filename)
-            
-            # Бутон за сваляне на истинския MP4 файл
-            with open(video_filename, "rb") as file:
-                btn = st.download_button(
-                    label="📥 Свали готови клип (.mp4)",
-                    data=file,
-                    file_name=f"clipweave_{platform.lower()}_ready.mp4",
-                    mime="video/mp4"
-                )
+            try:
+                with st.spinner("⏳ Рендиране на видеоклипа (9:16) в ход... Моля, изчакайте няколко секунди."):
+                    video_filename = generate_mp4_video(cleaned_text, output_filename=f"clipweave_{platform.lower()}.mp4")
+                
+                st.success("🎉 Видеоклипът е успешно рендиран и готов за изтегляне!")
+                st.video(video_filename)
+                
+                with open(video_filename, "rb") as file:
+                    st.download_button(
+                        label="📥 Свали готов клип (.mp4)",
+                        data=file,
+                        file_name=f"clipweave_{platform.lower()}_ready.mp4",
+                        mime="video/mp4"
+                    )
+            except Exception as e:
+                st.error(f"Грешка при рендирането на видеото: {e}")
+                st.info("💡 Съвет: Ако сървърът на Streamlit няма инсталиран видео кодек за MoviePy, можете да използвате генериране на текстов SRT/сценарий файл за лесно импортиране в CapCut.")
 
             if not is_my_admin:
                 remaining = max_free - st.session_state.free_uses
