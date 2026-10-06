@@ -2,4 +2,3 @@ streamlit
 moviepy
 Pillow
 numpy
-
