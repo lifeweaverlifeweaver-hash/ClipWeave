@@ -1,5 +1,9 @@
 import streamlit as st
 import os
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import VideoClip, AudioFileClip
+# Или ImageSequenceClip за рендиране кадър по кадър с MoviePy
 
 # Конфигурация на страницата
 st.set_page_config(page_title="ClipWeave - Autonomous UGC SaaS", page_icon="🎬", layout="wide")
@@ -42,6 +46,67 @@ def split_into_subtitles(text: str, max_chars: int = 25) -> list:
         lines.append(current_line)
     return lines
 
+# ФУНКЦИЯ ЗА ГЕНЕРИРАНЕ НА ИСТИНСКИ MP4 КЛИП СЪС СУБТИТРИ (ВИДЕО РЕНДЪР)
+def generate_mp4_video(text: string, output_filename="clipweave_output.mp4"):
+    width, height = 720, 1280  # Вертикален формат 9:16 (TikTok/Reels)
+    fps = 24
+    duration_per_line = 3.0
+    
+    subtitles = split_into_subtitles(text, max_chars=22)
+    total_duration = max(len(subtitles) * duration_per_line, 3.0)
+    
+    def make_frame(t):
+        # Създаване на динамичен фон (градиент или цвят)
+        img = Image.new("RGB", (width, height), color=(15, 23, 42)) # Тъмно син/сив стил
+        draw = ImageDraw.Draw(img)
+        
+        # Намиране на активния ред субтитри за съответната секунда t
+        line_index = int(t // duration_per_line)
+        if line_index >= len(subtitles):
+            line_index = len(subtitles) - 1
+        current_text = subtitles[line_index] if subtitles else text
+        
+        # Опит за зареждане на шрифт, с fallback към стандартен
+        try:
+            # Опит за стандартен дебел шрифт в Linux/Streamlit Cloud
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 46)
+        except:
+            try:
+                font = ImageFont.load_default()
+            except:
+                font = None
+
+        # Отрисуване на декоративен горен елемент (брендинг)
+        draw.rectangle([50, 100, width - 50, 140], fill=(255, 75, 75))
+        
+        # Центриране и изписване на текста на субтитрите
+        # Използваме multi-line или стандартен draw.text
+        bbox = draw.textbbox((0, 0), current_text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        x = (width - text_width) // 2
+        y = (height - text_height) // 2
+        
+        # Фон зад текста за четливост
+        padding = 20
+        draw.rectangle([x - padding, y - padding, x + text_width + padding, y + text_height + padding], fill=(0, 0, 0))
+        draw.text((x, y), current_text, fill=(255, 255, 255), font=font)
+        
+        # Добавяне на водяен знак долу
+        watermark = "ClipWeave AI Studio"
+        draw.text((50, height - 100), watermark, fill=(148, 163, 184), font=font)
+        
+        return np.array(img)
+
+    # Създаване на MoviePy клип
+    animation = VideoClip(make_frame, duration=total_duration)
+    animation.fps = fps
+    
+    # Запис във временен файл
+    animation.write_videofile(output_filename, codec="libx264", audio=False, logger=None)
+    return output_filename
+
 # Странично меню (Sidebar)
 st.sidebar.title("🔐 Клиентски и Админ Панел")
 admin_password = st.sidebar.text_input("Парола за неограничен достъп:", type="password")
@@ -66,9 +131,6 @@ menu = st.sidebar.selectbox("Изберете модул:", [
 if menu == "🤖 Streamlit AI Агент и Автоматизация":
     st.title("🤖 ClipWeave Autonomous AI Agent")
     st.markdown("### Вашият интелигентен помощник за анализ на съдържание и оптимизация на български език.")
-
-    st.info("💡 **Как работи AI агентът:** Той анализира актуалните тенденции за кратки форми (TikTok/Reels), коригира терминологията според българския бизнес контекст и подготвя готови пакети за субтитриране без глас зад кадър.")
-
     agent_topic = st.text_input("Въведете тема или продуктов ниш за анализ:", "натурална козметика и био продукти")
     
     if st.button("🧠 Стартирай AI анализ и генерирай стратегия"):
@@ -79,22 +141,21 @@ if menu == "🤖 Streamlit AI Агент и Автоматизация":
             st.markdown("---")
             st.markdown("#### 📊 Доклад и препоръки от агента:")
             st.markdown(f"1. **Целева аудитория в България:** Активна жени 20-45 г. в големите градове, търсещи чисти съставки.")
-            st.markdown(f"2. **Препоръчителна структура за видеото:** Динамични субтитри на тъмен фон с енергийна фонова музика (без говор).")
+            st.markdown(f"2. **Препоръчителна структура за видеото:** Динамични субтитри на тъмен фон (9:16 формат).")
             st.markdown(f"3. **Генерирана топ кука (Hook):** *„Спрете да превъртате! Ето как {agent_topic} променя изцяло грижата за вас.“*")
-            st.markdown("4. **Лингвистична проверка:** Термините са прегледани през българския речник на ClipWeave.")
 
 # -------------------------------------------------------------
-# МОДУЛ 2: AI ГЕНЕРАТОР НА СУБТИТРИ И КЛИПОВЕ
+# МОДУЛ 2: AI ГЕНЕРАТОР НА СУБТИТРИ И КЛИПОВЕ (С ИСТИНСКИ MP4 РЕНДЪР)
 # -------------------------------------------------------------
 elif menu == "🚀 AI Генератор на субтитри и клипове":
     st.title("🎬 ClipWeave Видео и Субтитри Генератор")
-    st.markdown("### Създайте вертикално видео (9:16) само с музика и перфектно синхронизирани субтитри на български.")
+    st.markdown("### Създайте истинско вертикално видео (.mp4) с фон и синхронизирани субтитри на български език.")
 
     platform = st.selectbox("Платформа:", ["TikTok", "Instagram Reels", "YouTube Shorts"])
     raw_input_text = st.text_area("Въведете вашия текст или сценарий за субтитрите:", 
                                   "Спрете да превъртате! Това е най-лесният начин да развиете проекта си бързо и без излишни разходи.")
 
-    if st.button("🚀 Генерирай пакет субтитри и подготви за рендър"):
+    if st.button("🚀 Рендирай и генерирай истински MP4 клип"):
         if not is_my_admin and st.session_state.free_uses >= max_free:
             st.error("⚠️ Изчерпихте вашите 3 безплатни опита! За неограничен достъп преминете към платен план през EasyPay.")
         elif not raw_input_text:
@@ -104,16 +165,23 @@ elif menu == "🚀 AI Генератор на субтитри и клипове
                 st.session_state.free_uses += 1
             
             cleaned_text = clean_bulgarian_text(raw_input_text)
-            subtitles = split_into_subtitles(cleaned_text, max_chars=25)
             
-            st.success("🎉 Текстът е успешно обработен и разбит на субтитри!")
-            st.markdown("---")
-            st.markdown(f"#### 📱 Резултат за {platform} (Без глас, само музика и текст):")
+            with st.spinner("⏳ Рендиране на видеоклипа (9:16) в ход... Моля, изчакайте няколко секунди."):
+                video_filename = generate_mp4_video(cleaned_text, output_filename=f"clipweave_{platform.lower()}.mp4")
             
-            for i, line in enumerate(subtitles):
-                st.code(f"Ред {i+1} [Тайминг {i*3.0}с - {(i+1)*3.0}с]: {line}", language="text")
-                
-            st.info("🎵 *Субтитрите са напълно готови за екран и синхронизирани с фонова музика.*")
+            st.success("🎉 Видеоклипът е успешно рендиран и готов за изтегляне!")
+            
+            # Представяне на видео плеър в Streamlit за преглед
+            st.video(video_filename)
+            
+            # Бутон за сваляне на истинския MP4 файл
+            with open(video_filename, "rb") as file:
+                btn = st.download_button(
+                    label="📥 Свали готови клип (.mp4)",
+                    data=file,
+                    file_name=f"clipweave_{platform.lower()}_ready.mp4",
+                    mime="video/mp4"
+                )
 
             if not is_my_admin:
                 remaining = max_free - st.session_state.free_uses
@@ -150,7 +218,7 @@ elif menu == "🛒 Маркетплейс за задачи (€)":
 # -------------------------------------------------------------
 elif menu == "📊 Моите Кампании":
     st.title("📊 Управление на кампании")
-    st.metric(label="Използвани генерации", value=st.session_state.uses if "uses" in st.session_state else st.session_state.free_uses)
+    st.metric(label="Използвани генерации", value=st.session_state.free_uses)
     st.metric(label="Активни задачи в системата", value=len(st.session_state.campaigns))
 
 # -------------------------------------------------------------
