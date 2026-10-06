@@ -4,7 +4,7 @@ import urllib.request
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-# Безопасен импорт за библиотеката за видео обработка
+# Безопасен импорт за библиотеката за видео обработка (MoviePy)
 try:
     from moviepy import VideoClip
 except ImportError:
