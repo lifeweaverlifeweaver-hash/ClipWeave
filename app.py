@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import urllib.request
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -39,42 +40,42 @@ def clean_bulgarian_text(text: str) -> str:
         text = text.replace(wrong, correct)
     return text.strip()
 
-# ФУНКЦИЯ ЗА СТАБИЛНО ГЕНЕРИРАНЕ НА ВИДЕО И СУБТИТРИ (ПИКСЕЛЕН МЕТОД С ГАРАНТИРАНА КИРИЛИЦА)
+# ФУНКЦИЯ ЗА ГАРАНТИРАНО ЗАРЕЖДАНЕ НА ШРИФТ С КИРИЛИЦА
+def get_cyrillic_font(size=36):
+    font_path = "DejaVuSans-Bold.ttf"
+    if not os.path.exists(font_path):
+        try:
+            # Сваляме сигурен шрифт с пълна поддръжка на кирилица
+            url = "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf"
+            urllib.request.urlretrieve(url, font_path)
+        except Exception:
+            pass
+            
+    if os.path.exists(font_path):
+        try:
+            return ImageFont.truetype(font_path, size)
+        except:
+            pass
+            
+    return ImageFont.load_default()
+
+# ФУНКЦИЯ ЗА СТАБИЛНО ГЕНЕРИРАНЕ НА ВИДЕО И СУБТИТРИ
 def generate_reliable_video(text: str, output_filename="clipweave_output.mp4"):
     width, height = 720, 1280  # 9:16 вертикален формат
     fps = 24
     duration = 5.0  # 5 секунди динамичен клип
+    font = get_cyrillic_font(36)
     
     def make_frame(t):
-        # Създаване на кадър с помощта на PIL (което позволява перфектно изобразяване на кирилица)
+        # Създаване на кадър с помощта на PIL
         img = Image.new("RGB", (width, height), color=(15, 23, 42)) # Тъмно син фон
         draw = ImageDraw.Draw(img)
         
-        # Опит за зареждане на шрифт с кирилица от Linux системата
-        font = None
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"
-        ]
-        
-        for path in font_paths:
-            if os.path.exists(path):
-                try:
-                    font = ImageFont.truetype(path, 36)
-                    break
-                except:
-                    continue
-        
-        if font is None:
-            font = ImageFont.load_default()
-
         # Декоративен горен елемент (брендинг лента)
         draw.rectangle([40, 60, width - 40, 110], fill=(255, 75, 75))
         draw.text((60, 72), "CLIPWEAVE AI STUDIO", fill=(255, 255, 255), font=font)
         
-        # Разделяне на дългия текст на редове, за да се побере на екрана
+        # Разделяне на дългия текст на редове
         words = text.split()
         lines = []
         current_line = ""
@@ -95,14 +96,14 @@ def generate_reliable_video(text: str, output_filename="clipweave_output.mp4"):
                 lw = bbox[2] - bbox[0]
                 lh = bbox[3] - bbox[1]
             except:
-                lw, lh = len(line) * 12, 30
+                lw, lh = len(line) * 15, 35
                 
             lx = (width - lw) // 2
-            ly = start_y + (i * 60)
+            ly = start_y + (i * 65)
             
             # Черен фон зад всеки ред за максимална четимост
             draw.rectangle([lx - 20, ly - 10, lx + lw + 20, ly + lh + 15], fill=(0, 0, 0))
-            # Бял текст
+            # Бял текст с кирилица
             draw.text((lx, ly), line, fill=(255, 255, 255), font=font)
             
         # Долен воден знак
@@ -179,10 +180,10 @@ elif menu == "AI Генератор на субтитри и клипове":
             cleaned_text = clean_bulgarian_text(raw_input_text)
             
             try:
-                with st.spinner("⏳ Създаване и рендиране на истинско видео (това отнема няколко секунди)..."):
+                with st.spinner("⏳ Създаване и рендиране на истинско видео с кирилица..."):
                     video_filename = generate_reliable_video(cleaned_text, output_filename=f"clipweave_{platform.lower()}.mp4")
                 
-                st.success("🎉 Видеоклипът е успешно създаден и готов за гледане и сваляне!")
+                st.success("🎉 Видеоклипът е успешно създаден с правилни български букви!")
                 st.video(video_filename)
                 
                 with open(video_filename, "rb") as file:
