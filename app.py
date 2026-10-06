@@ -3,14 +3,14 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-# Безопасен импорт за MoviePy спрямо версията му
+# Безопасен импорт за MoviePy спрямо различните версии
 try:
-    from moviepy.editor import VideoClip
+    from moviepy.editor import ColorClip, TextClip, CompositeVideoClip
 except ImportError:
     try:
-        from moviepy import VideoClip
+        from moviepy import ColorClip, TextClip, CompositeVideoClip
     except ImportError:
-        VideoClip = None
+        ColorClip, TextClip, CompositeVideoClip = None, None, None
 
 # Конфигурация на страницата
 st.set_page_config(page_title="ClipWeave - Autonomous UGC SaaS", page_icon="🎬", layout="wide")
@@ -39,39 +39,18 @@ def clean_bulgarian_text(text: str) -> str:
         text = text.replace(wrong, correct)
     return text.strip()
 
-def split_into_subtitles(text: str, max_chars: int = 25) -> list:
-    words = text.split()
-    lines = []
-    current_line = ""
-    for word in words:
-        if len(current_line + " " + word) <= max_chars:
-            current_line = (current_line + " " + word).strip()
-        else:
-            lines.append(current_line)
-            current_line = word
-    if current_line:
-        lines.append(current_line)
-    return lines
-
-# ФУНКЦИЯ ЗА ГЕНЕРИРАНЕ НА ВИДЕО С ПЪЛНА ПОДДРЪЖКА НА КИРИЛИЦА
-def generate_mp4_video(text: str, output_filename="clipweave_output.mp4"):
-    width, height = 720, 1280  # Вертикален формат 9:16 (TikTok/Reels)
+# ФУНКЦИЯ ЗА СТАБИЛНО ГЕНЕРИРАНЕ НА ВИДЕО И СУБТИТРИ (ПИКСЕЛЕН МЕТОД С ГАРАНТИРАНА КИРИЛИЦА)
+def generate_reliable_video(text: str, output_filename="clipweave_output.mp4"):
+    width, height = 720, 1280  # 9:16 вертикален формат
     fps = 24
-    duration_per_line = 3.0
-    
-    subtitles = split_into_subtitles(text, max_chars=22)
-    total_duration = max(len(subtitles) * duration_per_line, 3.0)
+    duration = 5.0  # 5 секунди динамичен клип
     
     def make_frame(t):
-        img = Image.new("RGB", (width, height), color=(15, 23, 42))  # Тъмно син фон
+        # Създаване на кадър с помощта на PIL (което позволява перфектно изобразяване на кирилица)
+        img = Image.new("RGB", (width, height), color=(15, 23, 42)) # Тъмно син фон
         draw = ImageDraw.Draw(img)
         
-        line_index = int(t // duration_per_line)
-        if line_index >= len(subtitles):
-            line_index = len(subtitles) - 1
-        current_text = subtitles[line_index] if subtitles else text
-        
-        # Интелигентно търсене на TrueType шрифт с кирилица в Linux/Streamlit Cloud
+        # Опит за зареждане на шрифт с кирилица от Linux системата
         font = None
         font_paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -83,7 +62,7 @@ def generate_mp4_video(text: str, output_filename="clipweave_output.mp4"):
         for path in font_paths:
             if os.path.exists(path):
                 try:
-                    font = ImageFont.truetype(path, 42)
+                    font = ImageFont.truetype(path, 36)
                     break
                 except:
                     continue
@@ -91,40 +70,55 @@ def generate_mp4_video(text: str, output_filename="clipweave_output.mp4"):
         if font is None:
             font = ImageFont.load_default()
 
-        # Декоративен горен елемент (брендинг линия)
-        draw.rectangle([50, 80, width - 50, 120], fill=(255, 75, 75))
+        # Декоративен горен елемент (брендинг лента)
+        draw.rectangle([40, 60, width - 40, 110], fill=(255, 75, 75))
+        draw.text((60, 72), "CLIPWEAVE AI STUDIO", fill=(255, 255, 255), font=font)
         
-        # Центриране на текста на субтитрите
-        try:
-            bbox = draw.textbbox((0, 0), current_text, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-        except:
-            text_width, text_height = len(current_text) * 15, 40
+        # Разделяне на дългия текст на редове, за да се побере на екрана
+        words = text.split()
+        lines = []
+        current_line = ""
+        for word in words:
+            if len(current_line + " " + word) <= 25:
+                current_line = (current_line + " " + word).strip()
+            else:
+                lines.append(current_line)
+                current_line = word
+        if current_line:
+            lines.append(current_line)
             
-        x = (width - text_width) // 2
-        y = (height - text_height) // 2
-        
-        # Черен плътен фон зад текста за отличен контраст
-        padding = 24
-        draw.rectangle([x - padding, y - padding, x + text_width + padding, y + text_height + padding], fill=(0, 0, 0))
-        
-        # Изписване на кирилицата с бял цвят
-        draw.text((x, y), current_text, fill=(255, 255, 255), font=font)
-        
-        # Воден знак долу вляво
-        watermark = "ClipWeave AI Studio"
-        draw.text((50, height - 80), watermark, fill=(148, 163, 184), font=font)
+        # Рисуване на текста ред по ред с красив фон за контраст
+        start_y = 450
+        for i, line in enumerate(lines[:5]):  # Показваме до 5 реда
+            try:
+                bbox = draw.textbbox((0, 0), line, font=font)
+                lw = bbox[2] - bbox[0]
+                lh = bbox[3] - bbox[1]
+            except:
+                lw, lh = len(line) * 12, 30
+                
+            lx = (width - lw) // 2
+            ly = start_y + (i * 60)
+            
+            # Черен фон зад всеки ред за максимална четимост
+            draw.rectangle([lx - 20, ly - 10, lx + lw + 20, ly + lh + 15], fill=(0, 0, 0))
+            # Бял текст
+            draw.text((lx, ly), line, fill=(255, 255, 255), font=font)
+            
+        # Долен воден знак
+        draw.text((40, height - 80), "Автоматично генерирано за TikTok & Reels", fill=(148, 163, 184), font=font)
         
         return np.array(img)
 
-    if VideoClip is not None:
-        animation = VideoClip(make_frame, duration=total_duration)
+    # Използване на MoviePy за съединяване на кадрите във видеофайл
+    if ColorClip is not None:
+        from moviepy.editor import VideoClip
+        animation = VideoClip(make_frame, duration=duration)
         animation.fps = fps
         animation.write_videofile(output_filename, codec="libx264", audio=False, logger=None)
         return output_filename
     else:
-        raise ImportError("MoviePy не е инсталиран правилно на сървъра.")
+        raise ImportError("MoviePy не е зареден правилно.")
 
 # Странично меню (Sidebar)
 st.sidebar.title("Клиентски и Админ Панел")
@@ -168,13 +162,13 @@ if menu == "Streamlit AI Агент и Автоматизация":
 # -------------------------------------------------------------
 elif menu == "AI Генератор на субтитри и клипове":
     st.title("ClipWeave Видео и Субтитри Генератор")
-    st.markdown("### Създайте вертикално видео (9:16) с фон и синхронизирани субтитри на български език.")
+    st.markdown("### Създайте истинско вертикално видео (9:16) с вградени субтитри на български език.")
 
     platform = st.selectbox("Платформа:", ["TikTok", "Instagram Reels", "YouTube Shorts"])
     raw_input_text = st.text_area("Въведете вашия текст или сценарий за субтитрите:", 
                                   "Спрете да превъртате! Това е най-лесният начин да развиете проекта си бързо и без излишни разходи.")
 
-    if st.button("Рендирай и генерирай MP4 клип"):
+    if st.button("Рендирай истински MP4 клип"):
         if not is_my_admin and st.session_state.free_uses >= max_free:
             st.error("Изчерпихте вашите 3 безплатни опита! За неограничен достъп преминете към платен план през EasyPay.")
         elif not raw_input_text:
@@ -186,21 +180,21 @@ elif menu == "AI Генератор на субтитри и клипове":
             cleaned_text = clean_bulgarian_text(raw_input_text)
             
             try:
-                with st.spinner("Рендиране на видеоклипа (9:16) в ход... Моля, изчакайте няколко секунди."):
-                    video_filename = generate_mp4_video(cleaned_text, output_filename=f"clipweave_{platform.lower()}.mp4")
+                with st.spinner("⏳ Създаване и рендиране на истинско видео (това отнема няколко секунди)..."):
+                    video_filename = generate_reliable_video(cleaned_text, output_filename=f"clipweave_{platform.lower()}.mp4")
                 
-                st.success("Видеоклипът е успешно рендиран и готов за изтегляне!")
+                st.success("🎉 Видеоклипът е успешно създаден и готов за гледане и сваляне!")
                 st.video(video_filename)
                 
                 with open(video_filename, "rb") as file:
                     st.download_button(
-                        label="Свали готов клип (.mp4)",
+                        label="📥 Свали готов MP4 клип",
                         data=file,
                         file_name=f"clipweave_{platform.lower()}_ready.mp4",
                         mime="video/mp4"
                     )
             except Exception as e:
-                st.error(f"Грешка при рендирането на видеото: {e}")
+                st.error(f"Грешка при рендирането: {e}")
 
             if not is_my_admin:
                 remaining = max_free - st.session_state.free_uses
