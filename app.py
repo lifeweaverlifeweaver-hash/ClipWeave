@@ -3,14 +3,14 @@ import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-# Безопасен импорт за MoviePy спрямо различните версии
+# Безопасен импорт за различните версии на MoviePy (v1.x и v2.x)
 try:
-    from moviepy.editor import ColorClip, TextClip, CompositeVideoClip
+    from moviepy import VideoClip
 except ImportError:
     try:
-        from moviepy import ColorClip, TextClip, CompositeVideoClip
+        from moviepy.editor import VideoClip
     except ImportError:
-        ColorClip, TextClip, CompositeVideoClip = None, None, None
+        VideoClip = None
 
 # Конфигурация на страницата
 st.set_page_config(page_title="ClipWeave - Autonomous UGC SaaS", page_icon="🎬", layout="wide")
@@ -111,14 +111,13 @@ def generate_reliable_video(text: str, output_filename="clipweave_output.mp4"):
         return np.array(img)
 
     # Използване на MoviePy за съединяване на кадрите във видеофайл
-    if ColorClip is not None:
-        from moviepy.editor import VideoClip
+    if VideoClip is not None:
         animation = VideoClip(make_frame, duration=duration)
         animation.fps = fps
         animation.write_videofile(output_filename, codec="libx264", audio=False, logger=None)
         return output_filename
     else:
-        raise ImportError("MoviePy не е зареден правилно.")
+        raise ImportError("MoviePy не е инсталиран или зареден правилно в системата.")
 
 # Странично меню (Sidebar)
 st.sidebar.title("Клиентски и Админ Панел")
